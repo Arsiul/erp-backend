@@ -35,6 +35,14 @@ services:
           property: connectionString
       - key: JWT_ACCESS_SECRET
         generateValue: true
+      - key: JWT_ACCESS_TTL
+        value: 15m
+      - key: REFRESH_TTL_DAYS
+        value: '7'
+      - key: THROTTLE_TTL_SECONDS
+        value: '60'
+      - key: THROTTLE_LIMIT
+        value: '100'
       - key: CORS_ORIGIN
         sync: false # URL del frontend en Vercel, p. ej. https://erp-frontend.vercel.app
       - key: COOKIE_SECURE
