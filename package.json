@@ -1,0 +1,113 @@
+{
+  "name": "erp-backend",
+  "version": "0.1.0",
+  "description": "ERP backend API (NestJS + Prisma + PostgreSQL)",
+  "private": true,
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=24.9.0",
+    "pnpm": ">=12"
+  },
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "pnpm run prisma:generate && nest build",
+    "start:prod": "prisma migrate deploy && node dist/main.js",
+    "prisma:generate": "prisma generate",
+    "lint": "eslint . --max-warnings 0 && prettier --check .",
+    "typecheck": "pnpm run prisma:generate && tsc --noEmit -p tsconfig.json",
+    "format": "prettier --write .",
+    "test": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js",
+    "test:cov": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js --coverage",
+    "test:e2e": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js --config test/jest-e2e.json --runInBand",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "pnpm run build && prisma db seed"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.2.0",
+    "@nestjs/config": "^12.0.1",
+    "@nestjs/core": "12.2.0",
+    "@nestjs/jwt": "^12.0.3",
+    "@nestjs/platform-express": "12.2.0",
+    "@nestjs/swagger": "^12.0.4",
+    "@nestjs/throttler": "^6.7.1",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "argon2": "^0.45.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "compression": "^1.8.2",
+    "cookie-parser": "^1.4.7",
+    "decimal.js": "^10.6.0",
+    "helmet": "^8.3.0",
+    "prisma": "7.10.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@nestjs/cli": "12.0.10",
+    "@nestjs/schematics": "12.0.10",
+    "@nestjs/testing": "12.2.0",
+    "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.19.2",
+    "@types/supertest": "^7.2.1",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.17.1",
+    "jest": "^30.5.2",
+    "prettier": "^3.9.10",
+    "supertest": "^7.3.1",
+    "ts-jest": "29.4.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.72.0"
+  },
+  "jest": {
+    "rootDir": ".",
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "moduleFileExtensions": [
+      "ts",
+      "js",
+      "json"
+    ],
+    "testRegex": ".*\\.spec\\.ts$",
+    "testEnvironment": "node",
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.json"
+        }
+      ]
+    },
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/generated/**",
+      "!src/**/*.spec.ts"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageThreshold": {
+      "./src/**/domain/**/*.ts": {
+        "branches": 90,
+        "functions": 90,
+        "lines": 90,
+        "statements": 90
+      },
+      "./src/**/application/**/*.ts": {
+        "branches": 90,
+        "functions": 90,
+        "lines": 90,
+        "statements": 90
+      }
+    },
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    }
+  }
+}

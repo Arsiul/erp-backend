@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Generated Prisma client
+src/generated/
+
+# Tests
+coverage/
+
+# Environment (never commit real values)
+.env
+.env.*
+!.env.example
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# Local document uploads (STORAGE_DRIVER=disk)
+uploads/

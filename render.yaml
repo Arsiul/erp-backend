@@ -1,0 +1,57 @@
+# render.yaml — Blueprint de Render del repositorio del backend (API NestJS + PostgreSQL).
+# El frontend vive en su propio repositorio, en Vercel, y llega a la API por el rewrite /api/*.
+# Secretos: generateValue o panel de Render (sync: false). Ninguno va en el repositorio.
+databases:
+  - name: erp-db
+    plan: free # caduca a los 30 días; para uso estable, basic-256mb o superior
+    databaseName: erp
+    user: erp
+    region: oregon
+    postgresMajorVersion: '16'
+    ipAllowList: [] # solo red privada de Render
+
+services:
+  - type: web
+    name: erp-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    # El plan free no admite preDeployCommand: migraciones y seed idempotente van en el arranque.
+    # El seed solo crea roles, el primer administrador y la configuración si no existen.
+    startCommand: pnpm exec prisma migrate deploy && node dist/seed.js && node dist/main.js
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: '24'
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: America/Lima
+      - key: DATABASE_URL
+        fromDatabase:
+          name: erp-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false # URL del frontend en Vercel, p. ej. https://erp-frontend.vercel.app
+      - key: COOKIE_SECURE
+        value: 'true'
+      - key: COOKIE_SAMESITE
+        value: strict # mismo origen vía el rewrite /api/* de Vercel
+      - key: TRUST_PROXY_HOPS
+        value: '2' # proxy de Vercel + balanceador de Render: el rate limit ve la IP real
+      - key: STORAGE_DRIVER
+        value: database # el disco del plan free es efímero
+      - key: INITIAL_ADMIN_NAME
+        sync: false
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: COMPANY_NAME
+        sync: false
+      - key: COMPANY_RUC
+        sync: false

@@ -1,0 +1,44 @@
+name: erp
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-erp_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-erp_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-erp_dev}
+      TZ: America/Lima
+      PGTZ: America/Lima
+    ports:
+      - '5433:5432'
+    volumes:
+      - erp_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-test:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-erp_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-erp_test_password}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-erp_test}
+      TZ: America/Lima
+      PGTZ: America/Lima
+    ports:
+      - '5434:5432'
+    volumes:
+      - erp_db_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  erp_db_data:
+  erp_db_test_data:
