@@ -16,7 +16,9 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    # Render ya trae pnpm (respeta packageManager); corepack enable falla: /usr/bin es de solo lectura.
+    # NODE_ENV=development solo en la instalación: el build necesita las devDependencies (nest, tsc).
+    buildCommand: NODE_ENV=development pnpm install --frozen-lockfile && pnpm build
     # El plan free no admite preDeployCommand: migraciones y seed idempotente van en el arranque.
     # El seed solo crea roles, el primer administrador y la configuración si no existen.
     startCommand: pnpm exec prisma migrate deploy && node dist/seed.js && node dist/main.js
