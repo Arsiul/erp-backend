@@ -17,6 +17,7 @@ import { StockLedgerModule } from './modules/inventario/stock-ledger.module';
 import { MaestrosModule } from './modules/maestros/maestros.module';
 import { TesoreriaModule } from './modules/tesoreria/tesoreria.module';
 import { ReportesModule } from './modules/reportes/reportes.module';
+import { TransferenciaModule } from './modules/transferencia/transferencia.module';
 import { JwtAuthGuard } from './modules/auth/presentation/jwt-auth.guard';
 import { HealthModule } from './shared/health.module';
 import { PermissionGuard } from './shared/presentation/auth/permission.guard';
@@ -49,6 +50,7 @@ import { SharedModule } from './shared/shared.module';
     InventarioModule,
     TesoreriaModule,
     ReportesModule,
+    TransferenciaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -50,5 +50,13 @@ import { WarehousesController } from './presentation/warehouses.controller';
     WarehousesUseCases,
     BankAccountsUseCases,
   ],
+  exports: [
+    CustomersUseCases,
+    SuppliersUseCases,
+    CategoriesUseCases,
+    ProductsUseCases,
+    WarehousesUseCases,
+    BankAccountsUseCases,
+  ],
 })
 export class MaestrosModule {}

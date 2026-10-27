@@ -33,7 +33,7 @@ export class PrismaUnitOfWork implements UnitOfWork {
     const isolationLevel = options?.isolationLevel;
     try {
       return await this.prisma.$transaction((tx) => this.host.run(tx, work), {
-        timeout: TRANSACTION_TIMEOUT_MS,
+        timeout: options?.timeoutMs ?? TRANSACTION_TIMEOUT_MS,
         ...(isolationLevel ? { isolationLevel: ISOLATION_LEVELS[isolationLevel] } : {}),
       });
     } catch (error) {

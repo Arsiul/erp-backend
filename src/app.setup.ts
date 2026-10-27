@@ -25,6 +25,8 @@ export function configureApp(app: NestExpressApplication, config: AppConfig): vo
   app.use(helmet());
   app.use(compression());
   app.use(cookieParser());
+  // CSV imports travel as JSON text; the default 100 kB is too small for them.
+  app.useBodyParser('json', { limit: '5mb' });
   app.enableCors({
     origin: [...config.corsOrigins],
     credentials: true,

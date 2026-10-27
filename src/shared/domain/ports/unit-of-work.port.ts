@@ -4,6 +4,8 @@ export type IsolationLevel = 'read-committed' | 'repeatable-read' | 'serializabl
 
 export interface UnitOfWorkOptions {
   readonly isolationLevel?: IsolationLevel;
+  /** Overrides the default transaction timeout, for long batches such as CSV imports. */
+  readonly timeoutMs?: number;
 }
 
 /**

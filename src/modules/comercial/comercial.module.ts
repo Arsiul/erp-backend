@@ -46,5 +46,6 @@ import { SalesController } from './presentation/sales.controller';
     CreditNotesUseCases,
     ReceivablesUseCases,
   ],
+  exports: [QuotesUseCases, SalesUseCases],
 })
 export class ComercialModule {}

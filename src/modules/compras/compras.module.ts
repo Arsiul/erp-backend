@@ -42,5 +42,6 @@ import { SupplierInvoicesController } from './presentation/supplier-invoices.con
     SupplierInvoicesUseCases,
     PayablesUseCases,
   ],
+  exports: [PurchaseOrdersUseCases],
 })
 export class ComprasModule {}
