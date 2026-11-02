@@ -1,7 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { todayOf } from '../../../shared/application/clock/today';
 import type { ActingUser } from '../../../shared/application/listing/list-query';
 import type { ResourceKey } from '../../../shared/domain/authorization/resources';
 import { BusinessError, DomainError, NotFoundError } from '../../../shared/domain/errors/domain-error';
+import { Money } from '../../../shared/domain/money/money';
+import { CLOCK, type Clock } from '../../../shared/domain/ports/clock.port';
+import { STOCK_LEDGER, type StockLedger } from '../../../shared/domain/ports/stock-ledger.port';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../../shared/domain/ports/unit-of-work.port';
 import { PrismaTransactionHost } from '../../../shared/infrastructure/prisma/prisma-transaction-host';
 import { QuotesUseCases } from '../../comercial/application/quotes.use-cases';
@@ -57,6 +61,8 @@ export class TransferUseCases {
 
   constructor(
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    @Inject(STOCK_LEDGER) private readonly stock: StockLedger,
+    @Inject(CLOCK) private readonly clock: Clock,
     private readonly tx: PrismaTransactionHost,
     private readonly customers: CustomersUseCases,
     private readonly suppliers: SuppliersUseCases,
@@ -437,43 +443,65 @@ export class TransferUseCases {
       ventas: {
         file: 'ventas',
         columns: [
-          'numero', 'cliente_codigo', 'cliente_nombre', 'almacen_codigo', 'fecha', 'vendedor',
-          'condicion_pago', 'notas', 'estado', 'comprobante', 'producto_sku', 'producto_nombre',
-          'cantidad', 'precio_unitario', 'total',
+          'numero', 'fecha', 'vendedor', 'condicion_pago', 'notas', 'estado', 'comprobante',
+          'cliente_codigo', 'cliente_nombre', 'cliente_tipo_documento', 'cliente_documento',
+          'cliente_email', 'cliente_telefono', 'cliente_direccion', 'cliente_dias_credito',
+          'cliente_limite_credito', 'almacen_codigo', 'almacen_nombre', 'almacen_direccion',
+          'almacen_responsable', 'producto_sku', 'producto_nombre', 'producto_categoria',
+          'producto_unidad', 'producto_precio_venta', 'producto_precio_costo',
+          'producto_stock_inicial', 'cantidad', 'precio_unitario', 'total',
         ],
-        required: ['numero', 'cliente_codigo', 'almacen_codigo', 'producto_sku', 'cantidad'],
+        required: ['numero', 'producto_sku', 'cantidad'],
         rows: async () =>
           (
             await this.db.sale.findMany({
               orderBy: { seq: 'asc' },
-              include: { customer: true, warehouse: true, lines: { orderBy: { position: 'asc' } } },
+              include: {
+                customer: true,
+                warehouse: true,
+                lines: { orderBy: { position: 'asc' }, include: { product: { include: { category: true } } } },
+              },
             })
           ).flatMap((s) =>
             s.lines.map((l) => [
-              s.number, s.customer.code, s.customerName, s.warehouse.code, isoDate(s.issuedAt),
-              s.seller, label('paymentTerm', s.paymentTerm), s.notes, s.status, s.invoiceNumber,
-              l.sku, l.productName, l.quantity, amount(l.unitPrice), amount(s.total),
+              s.number, isoDate(s.issuedAt), s.seller, label('paymentTerm', s.paymentTerm), s.notes,
+              s.status, s.invoiceNumber, s.customer.code, s.customerName, s.customer.documentType,
+              s.customer.documentNumber, s.customer.email, s.customer.phone, s.customer.address,
+              s.customer.creditDays, amount(s.customer.creditLimit), s.warehouse.code,
+              s.warehouseName, s.warehouse.address, s.warehouse.manager, l.sku, l.productName,
+              l.product.category.name, l.product.unit, amount(l.product.salePrice),
+              amount(l.product.costPrice), '', l.quantity, amount(l.unitPrice), amount(s.total),
             ]),
           ),
-        prepare: (rows, actor) =>
-          eachDocument(rows, async (v, lines) => {
-            const input = {
-              customerId: await this.customerId(v.cliente_codigo ?? ''),
-              warehouseId: await this.warehouseId(v.almacen_codigo ?? ''),
+        prepare: (rows, actor) => {
+          const known = new Set<string>();
+          return eachDocument(rows, async (v, group) => {
+            const customer = await this.saleCustomer(v, known, actor);
+            const warehouse = await this.saleWarehouse(v, known, actor);
+            const lines: ((warehouseId: string, reference: string) => Promise<SaleLineInput>)[] = [];
+            for (const row of group) lines.push(await this.saleLine(row.values, known, actor));
+            const header = {
               issuedAt: dateValue(v.fecha ?? '', 'fecha'),
               seller: optional(v.vendedor),
               paymentTerm: enumValue('paymentTerm', v.condicion_pago ?? '', 'condicion_pago'),
               notes: optional(v.notas),
-              lines: await this.lines(lines),
             };
             const existing = await this.db.sale.findFirst({
               where: { number: v.numero ?? '' },
               select: { id: true },
             });
-            return upsert(existing?.id,
-              () => this.sales.create(input, actor),
-              (id) => this.sales.update(id, input, actor));
-          }),
+            const reference = `Importación ${v.numero ?? ''}`;
+            return async () => {
+              const warehouseId = await warehouse();
+              const input = { ...header, customerId: await customer(), warehouseId, lines: [] as SaleLineInput[] };
+              for (const line of lines) input.lines.push(await line(warehouseId, reference));
+              await this.coverStock(warehouseId, input.lines, reference);
+              return upsert(existing?.id,
+                () => this.sales.create(input, actor),
+                (id) => this.sales.update(id, input, actor))();
+            };
+          });
+        },
       },
 
       'ordenes-compra': {
@@ -619,6 +647,166 @@ export class TransferUseCases {
     }
     return lines;
   }
+
+  // ----------------------------------------------------------- sales import
+  // A sales file carries its own customers, warehouses, categories and products: each one
+  // is reused when it already exists (reactivated if inactive) and created otherwise.
+
+  private async saleCustomer(v: Values, known: Set<string>, actor: ActingUser): Promise<Resolve> {
+    const documentNumber = optional(v.cliente_documento)?.toUpperCase();
+    const ref = documentNumber ?? optional(v.cliente_codigo);
+    if (ref === undefined) throw new BusinessError('Indica cliente_documento (o cliente_codigo).');
+    const find = () =>
+      this.db.customer.findFirst({
+        where: documentNumber ? { documentNumber } : { code: ref },
+        select: { id: true, status: true },
+      });
+    const name = optional(v.cliente_nombre);
+    const input = documentNumber && name
+      ? {
+          name,
+          documentType: optional(v.cliente_tipo_documento)?.toUpperCase() ?? documentTypeOf(documentNumber),
+          documentNumber,
+          email: optional(v.cliente_email),
+          phone: optional(v.cliente_telefono),
+          address: optional(v.cliente_direccion),
+          creditDays: numberValue(v.cliente_dias_credito ?? '', 'cliente_dias_credito'),
+          creditLimit: numberValue(v.cliente_limite_credito ?? '', 'cliente_limite_credito'),
+        }
+      : undefined;
+    await requireSource(`cliente:${ref}`, input, find, known,
+      `el cliente ${ref}; agrega cliente_nombre y cliente_documento para crearlo`);
+    return async () => {
+      const found = await find();
+      if (!found) return (await this.customers.create(input ?? {}, actor)).id;
+      if (found.status === 'inactive') {
+        await this.db.customer.update({ where: { id: found.id }, data: { status: 'active' } });
+      }
+      return found.id;
+    };
+  }
+
+  private async saleWarehouse(v: Values, known: Set<string>, actor: ActingUser): Promise<Resolve> {
+    const name = optional(v.almacen_nombre);
+    const ref = name ?? optional(v.almacen_codigo);
+    if (ref === undefined) throw new BusinessError('Indica almacen_nombre (o almacen_codigo).');
+    const find = () =>
+      this.db.warehouse.findFirst({
+        where: name ? { name: { equals: name, mode: 'insensitive' } } : { code: ref },
+        select: { id: true, status: true },
+      });
+    const input = name
+      ? { name, address: optional(v.almacen_direccion), manager: optional(v.almacen_responsable) }
+      : undefined;
+    await requireSource(`almacen:${ref.toLowerCase()}`, input, find, known,
+      `el almacén ${ref}; agrega almacen_nombre para crearlo`);
+    return async () => {
+      const found = await find();
+      if (!found) return (await this.warehouses.create(input ?? {}, actor)).id;
+      if (found.status === 'inactive') {
+        await this.db.warehouse.update({ where: { id: found.id }, data: { status: 'active' } });
+      }
+      return found.id;
+    };
+  }
+
+  private saleCategory(name: string, actor: ActingUser): Resolve {
+    return async () => {
+      const found = await this.db.category.findFirst({
+        where: { OR: [{ code: name }, { name: { equals: name, mode: 'insensitive' } }] },
+        select: { id: true, status: true },
+      });
+      if (!found) return (await this.categories.create({ name }, actor)).id;
+      if (found.status === 'inactive') {
+        await this.db.category.update({ where: { id: found.id }, data: { status: 'active' } });
+      }
+      return found.id;
+    };
+  }
+
+  /** A new product enters `producto_stock_inicial` units into the sale's warehouse at cost. */
+  private async saleLine(v: Values, known: Set<string>, actor: ActingUser) {
+    const sku = (v.producto_sku ?? '').toUpperCase();
+    if (sku === '') throw new BusinessError('La columna producto_sku es obligatoria.');
+    const quantity = numberValue(v.cantidad ?? '', 'cantidad');
+    const unitPrice = numberValue(v.precio_unitario ?? '', 'precio_unitario');
+    const initialStock = numberValue(v.producto_stock_inicial ?? '', 'producto_stock_inicial') ?? 0;
+    const name = optional(v.producto_nombre);
+    const categoryName = optional(v.producto_categoria);
+    const find = () => this.db.product.findFirst({ where: { sku }, select: { id: true } });
+    const input = name && categoryName
+      ? {
+          sku,
+          name,
+          unit: optional(v.producto_unidad) ?? 'UND',
+          salePrice: numberValue(v.producto_precio_venta ?? '', 'producto_precio_venta') ?? unitPrice,
+          costPrice: numberValue(v.producto_precio_costo ?? '', 'producto_precio_costo'),
+        }
+      : undefined;
+    await requireSource(`producto:${sku}`, input, find, known,
+      `el producto con SKU ${sku}; agrega producto_nombre y producto_categoria para crearlo`);
+    const category = categoryName ? this.saleCategory(categoryName, actor) : undefined;
+
+    return async (warehouseId: string, reference: string): Promise<SaleLineInput> => {
+      let productId = (await find())?.id;
+      if (productId === undefined && input && category) {
+        productId = (await this.products.create({ ...input, categoryId: await category() }, actor)).id;
+        if (initialStock > 0) {
+          await this.stock.move({
+            productId, warehouseId, quantity: initialStock, origin: 'initial', reference,
+            date: todayOf(this.clock), unitCost: Money.of(input.costPrice ?? 0),
+          });
+        }
+      }
+      return { productId: productId ?? '', quantity, unitPrice };
+    };
+  }
+
+  /** Enters at cost whatever stock the sale lacks, so the file imports whatever the stock is. */
+  private async coverStock(warehouseId: string, lines: readonly SaleLineInput[], reference: string) {
+    for (const { productId, quantity } of lines) {
+      if (quantity === undefined || !Number.isInteger(quantity) || quantity <= 0) continue;
+      const item = await this.db.stockItem.findFirst({
+        where: { productId, warehouseId },
+        select: { quantity: true },
+      });
+      const missing = quantity - (item?.quantity ?? 0);
+      if (missing <= 0) continue;
+      const product = await this.db.product.findUnique({
+        where: { id: productId },
+        select: { costPrice: true },
+      });
+      await this.stock.move({
+        productId, warehouseId, quantity: missing, origin: 'initial', reference,
+        date: todayOf(this.clock), unitCost: Money.of(product?.costPrice ?? 0),
+      });
+    }
+  }
+}
+
+type Resolve = () => Promise<string>;
+
+interface SaleLineInput {
+  readonly productId: string;
+  readonly quantity: number | undefined;
+  readonly unitPrice: number | undefined;
+}
+
+const documentTypeOf = (documentNumber: string): string =>
+  /^\d{11}$/.test(documentNumber) ? 'RUC' : /^\d{8}$/.test(documentNumber) ? 'DNI' : 'CE';
+
+/** A reference the row cannot create must exist already or be created by an earlier row. */
+async function requireSource(
+  key: string,
+  input: object | undefined,
+  find: () => Promise<unknown>,
+  known: Set<string>,
+  missing: string,
+): Promise<void> {
+  if (input === undefined && !known.has(key) && !(await find())) {
+    throw new BusinessError(`No existe ${missing}.`);
+  }
+  known.add(key);
 }
 
 class ImportFailure extends Error {
@@ -643,7 +831,7 @@ const upsert =
     return 'updated';
   };
 
-type Column = 'almacen_codigo' | 'banco' | 'cantidad' | 'categoria_codigo' | 'categoria_nombre' | 'cliente_codigo' | 'codigo' | 'condicion_pago' | 'contacto' | 'descripcion' | 'dias_credito' | 'dias_pago' | 'direccion' | 'email' | 'estado' | 'fecha' | 'fecha_esperada' | 'limite_credito' | 'nombre' | 'notas' | 'numero' | 'numero_cuenta' | 'numero_documento' | 'precio_costo' | 'precio_unitario' | 'precio_venta' | 'producto_sku' | 'proveedor_codigo' | 'responsable' | 'ruc' | 'saldo_inicial' | 'sku' | 'stock_minimo' | 'telefono' | 'tipo_documento' | 'unidad' | 'valida_hasta' | 'vendedor';
+type Column = 'almacen_codigo' | 'almacen_direccion' | 'almacen_nombre' | 'almacen_responsable' | 'cliente_dias_credito' | 'cliente_direccion' | 'cliente_documento' | 'cliente_email' | 'cliente_limite_credito' | 'cliente_nombre' | 'cliente_telefono' | 'cliente_tipo_documento' | 'producto_categoria' | 'producto_nombre' | 'producto_precio_costo' | 'producto_precio_venta' | 'producto_stock_inicial' | 'producto_unidad' | 'banco' | 'cantidad' | 'categoria_codigo' | 'categoria_nombre' | 'cliente_codigo' | 'codigo' | 'condicion_pago' | 'contacto' | 'descripcion' | 'dias_credito' | 'dias_pago' | 'direccion' | 'email' | 'estado' | 'fecha' | 'fecha_esperada' | 'limite_credito' | 'nombre' | 'notas' | 'numero' | 'numero_cuenta' | 'numero_documento' | 'precio_costo' | 'precio_unitario' | 'precio_venta' | 'producto_sku' | 'proveedor_codigo' | 'responsable' | 'ruc' | 'saldo_inicial' | 'sku' | 'stock_minimo' | 'telefono' | 'tipo_documento' | 'unidad' | 'valida_hasta' | 'vendedor';
 type Values = Readonly<Partial<Record<Column, string>>>;
 
 /** Prepares every row and collects every error before failing. */
