@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import type { AuthenticatedUser } from '../../../shared/domain/authorization/authenticated-user';
 import { CurrentUser, RequirePermission } from '../../../shared/presentation/auth/auth.decorators';
+import { ActionBodyDto } from '../../../shared/presentation/listing/action-body.dto';
 import { listBody } from '../../../shared/presentation/listing/list-response';
 import { PurchaseOrdersUseCases } from '../application/purchase-orders.use-cases';
 import type { PurchaseOrderView } from '../domain/purchase-order';
@@ -87,12 +88,16 @@ export class PurchaseOrdersController {
   @Post(':id/:action')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('ordenes-compra', 'write')
-  @ApiOperation({ summary: 'approve (borrador) o cancel (borrador o aprobada sin recepciones)' })
+  @ApiOperation({
+    summary:
+      'approve (borrador), reject (borrador, con motivo) o cancel (sin recepciones, con motivo)',
+  })
   runAction(
     @Param('id') id: string,
     @Param('action') action: string,
+    @Body() body: ActionBodyDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<PurchaseOrderView> {
-    return this.orders.runAction(id, action, user);
+    return this.orders.runAction(id, action, body, user);
   }
 }

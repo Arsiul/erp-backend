@@ -27,6 +27,7 @@ const SALE_FIELDS = {
   invoiceId: true,
   invoiceNumber: true,
   notes: true,
+  cancelReason: true,
   lines: LINES_SELECT,
 } as const satisfies Prisma.SaleSelect;
 
@@ -118,10 +119,10 @@ export class PrismaSaleRepository implements SaleRepository {
     return toRecord(row);
   }
 
-  async setStatus(id: string, status: SaleStatus): Promise<SaleRecord> {
+  async setStatus(id: string, status: SaleStatus, cancelReason?: string): Promise<SaleRecord> {
     const row = await this.host.client.sale.update({
       where: { id },
-      data: { status },
+      data: cancelReason === undefined ? { status } : { status, cancelReason },
       select: SALE_FIELDS,
     });
     return toRecord(row);

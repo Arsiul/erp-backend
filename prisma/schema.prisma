@@ -100,6 +100,7 @@ enum PurchaseOrderStatus {
   partial
   received
   cancelled
+  rejected
 
   @@map("purchase_order_status")
 }
@@ -441,6 +442,8 @@ model Sale {
   invoiceId     String?     @unique @map("invoice_id")
   invoiceNumber String      @default("") @map("invoice_number")
   notes         String      @default("")
+  /// Why the sale was cancelled; `""` while it is in force.
+  cancelReason  String      @default("") @map("cancel_reason")
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
 
@@ -627,6 +630,8 @@ model PurchaseOrder {
   total         Decimal             @db.Decimal(14, 2)
   status        PurchaseOrderStatus @default(draft)
   notes         String              @default("")
+  /// Why the order was rejected or cancelled; `""` otherwise.
+  cancelReason  String              @default("") @map("cancel_reason")
   createdAt     DateTime            @default(now()) @map("created_at")
   updatedAt     DateTime            @updatedAt @map("updated_at")
 

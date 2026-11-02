@@ -1,5 +1,8 @@
 import { BUYER, ComprasWorld } from '../../../../test/support/compras/compras-doubles';
 import { BusinessError, NotFoundError } from '../../../shared/domain/errors/domain-error';
+import { REASON_REQUIRED } from '../../../shared/application/listing/resource-actions';
+
+const REASON = { reason: 'Proveedor sin stock' };
 
 describe('PurchaseOrdersUseCases', () => {
   let world: ComprasWorld;
@@ -127,11 +130,11 @@ describe('PurchaseOrdersUseCases', () => {
 
   it('approves a draft once and only with an active supplier', async () => {
     const order = await draft();
-    const approved = await world.orders.runAction(order.id, 'approve', BUYER);
+    const approved = await world.orders.runAction(order.id, 'approve', {}, BUYER);
     expect(approved.status).toBe('approved');
     expect(world.audit.actions()).toContain('ordenes-compra Aprobó OC-00001');
 
-    await expect(world.orders.runAction(order.id, 'approve', BUYER)).rejects.toThrow(
+    await expect(world.orders.runAction(order.id, 'approve', {}, BUYER)).rejects.toThrow(
       'Solo se aprueban órdenes en borrador.',
     );
 
@@ -142,14 +145,14 @@ describe('PurchaseOrdersUseCases', () => {
       paymentDays: 30,
       status: 'inactive',
     });
-    await expect(world.orders.runAction(other.id, 'approve', BUYER)).rejects.toThrow(
+    await expect(world.orders.runAction(other.id, 'approve', {}, BUYER)).rejects.toThrow(
       'No puedes usar el proveedor porque está en estado inactivo.',
     );
   });
 
   it('cancels a draft or an approved order but not one that received goods', async () => {
     const order = await draft();
-    await expect(world.orders.runAction(order.id, 'cancel', BUYER)).resolves.toMatchObject({
+    await expect(world.orders.runAction(order.id, 'cancel', REASON, BUYER)).resolves.toMatchObject({
       status: 'cancelled',
     });
 
@@ -158,17 +161,35 @@ describe('PurchaseOrdersUseCases', () => {
       { purchaseOrderId: id, guideNumber: 'T001-1', lines: [{ productId: 'p1', quantity: 1 }] },
       BUYER,
     );
-    await expect(world.orders.runAction(id, 'cancel', BUYER)).rejects.toThrow(
+    await expect(world.orders.runAction(id, 'cancel', REASON, BUYER)).rejects.toThrow(
       'La orden ya recibió mercadería o está cerrada; anula sus recepciones primero.',
     );
   });
 
+  it('rejects only drafts, with a reason that stays on the order', async () => {
+    const order = await draft();
+    await expect(
+      world.orders.runAction(order.id, 'reject', { reason: '  ' }, BUYER),
+    ).rejects.toThrow(REASON_REQUIRED);
+    await expect(world.orders.runAction(order.id, 'reject', REASON, BUYER)).resolves.toMatchObject({
+      status: 'rejected',
+      cancelReason: 'Proveedor sin stock',
+    });
+    expect(world.audit.actions()).toContain('ordenes-compra Rechazó OC-00001');
+
+    const id = await world.approvedOrder();
+    await expect(world.orders.runAction(id, 'reject', REASON, BUYER)).rejects.toThrow(
+      'Solo se rechazan órdenes en borrador.',
+    );
+    await expect(world.orders.runAction(id, 'cancel', {}, BUYER)).rejects.toThrow(REASON_REQUIRED);
+  });
+
   it('answers 404 for an unknown action or order', async () => {
     const order = await draft();
-    await expect(world.orders.runAction(order.id, 'close', BUYER)).rejects.toBeInstanceOf(
+    await expect(world.orders.runAction(order.id, 'close', {}, BUYER)).rejects.toBeInstanceOf(
       NotFoundError,
     );
-    await expect(world.orders.runAction('nope', 'approve', BUYER)).rejects.toBeInstanceOf(
+    await expect(world.orders.runAction('nope', 'approve', {}, BUYER)).rejects.toBeInstanceOf(
       NotFoundError,
     );
   });

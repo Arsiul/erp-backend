@@ -18,7 +18,11 @@ import {
   mergeDefined,
   toListCriteria,
 } from '../../../shared/application/listing/list-query';
-import { requireAction } from '../../../shared/application/listing/resource-actions';
+import {
+  type ActionInput,
+  requireAction,
+  requireReason,
+} from '../../../shared/application/listing/resource-actions';
 import {
   PURCHASING_CATALOG,
   type PurchasingCatalog,
@@ -38,6 +42,7 @@ import {
   assertOrderApprovable,
   assertOrderCancellable,
   assertOrderEditable,
+  assertOrderRejectable,
   assertOrderRemovable,
   type PurchaseOrderInput,
   purchaseOrderValues,
@@ -142,21 +147,32 @@ export class PurchaseOrdersUseCases {
     });
   }
 
-  /** `approve` (draft with an active supplier) or `cancel` (draft or approved, nothing received). */
-  runAction(id: string, actionId: string, actor: ActingUser): Promise<PurchaseOrderView> {
+  /**
+   * `approve` (draft with an active supplier), `reject` (draft) or `cancel` (draft or approved,
+   * nothing received); the last two require a reason.
+   */
+  runAction(
+    id: string,
+    actionId: string,
+    input: ActionInput,
+    actor: ActingUser,
+  ): Promise<PurchaseOrderView> {
     return this.uow.run(async () => {
       const current = found(await this.orders.findForUpdate(id));
       const action = requireAction(RESOURCE, actionId);
+      let status: PurchaseOrderStatus;
+      let reason: string | undefined;
       if (action.id === 'approve') {
         assertOrderApprovable(current);
         await activeSupplier(this.catalog, current.supplierId);
+        status = 'approved';
       } else {
-        assertOrderCancellable(current);
+        if (action.id === 'reject') assertOrderRejectable(current);
+        else assertOrderCancellable(current);
+        reason = requireReason(input);
+        status = action.id === 'reject' ? 'rejected' : 'cancelled';
       }
-      const updated = await this.orders.setStatus(
-        id,
-        action.id === 'approve' ? 'approved' : 'cancelled',
-      );
+      const updated = await this.orders.setStatus(id, status, reason);
       await this.record(actor, action.label, updated);
       return toPurchaseOrderView(updated);
     });

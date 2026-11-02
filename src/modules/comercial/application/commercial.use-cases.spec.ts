@@ -1,5 +1,8 @@
 import type { ActingUser } from '../../../shared/application/listing/list-query';
-import { UNKNOWN_ACTION } from '../../../shared/application/listing/resource-actions';
+import {
+  REASON_REQUIRED,
+  UNKNOWN_ACTION,
+} from '../../../shared/application/listing/resource-actions';
 import type { ResourceKey } from '../../../shared/domain/authorization/resources';
 import { BusinessError, NotFoundError } from '../../../shared/domain/errors/domain-error';
 import type { ListCriteria, ListResult } from '../../../shared/domain/listing/list-criteria';
@@ -50,6 +53,7 @@ import { ReceivablesUseCases } from './receivables.use-cases';
 import { SalesUseCases } from './sales.use-cases';
 
 const ADMIN: ActingUser = { id: 'admin', name: 'Administrador' };
+const REASON = { reason: 'Cliente desistió' };
 const TODAY = '2026-10-25';
 
 class ImmediateUnitOfWork implements UnitOfWork {
@@ -155,15 +159,15 @@ class MemorySales extends MemoryTable<SaleRecord> implements SaleRepository {
   }
 
   override create(values: SaleValues): Promise<SaleRecord> {
-    return super.create(values);
+    return super.create({ ...values, cancelReason: '' });
   }
 
   update(id: string, values: SaleEdit): Promise<SaleRecord> {
     return this.patch(id, values);
   }
 
-  setStatus(id: string, status: SaleStatus): Promise<SaleRecord> {
-    return this.patch(id, { status });
+  setStatus(id: string, status: SaleStatus, cancelReason?: string): Promise<SaleRecord> {
+    return this.patch(id, cancelReason === undefined ? { status } : { status, cancelReason });
   }
 
   setInvoice(id: string, invoice: { id: string; number: string } | null): Promise<SaleRecord> {
@@ -649,7 +653,7 @@ describe('SalesUseCases', () => {
     await expect(world.saleCases.update(sale.id, { paymentTerm: 'credit' }, ADMIN)).rejects.toThrow(
       'Ana Ruiz no tiene crédito suficiente para esta venta.',
     );
-    await world.saleCases.runAction(sale.id, 'cancel', ADMIN);
+    await world.saleCases.runAction(sale.id, 'cancel', REASON, ADMIN);
     await expect(world.saleCases.update(sale.id, {}, ADMIN)).rejects.toThrow(
       'Solo se editan ventas pendientes de facturar.',
     );
@@ -662,8 +666,11 @@ describe('SalesUseCases', () => {
     await world.quoteCases.runAction(quote.id, 'accept', ADMIN);
     const sale = await world.saleCases.create({ quoteId: quote.id, warehouseId: 'w1' }, ADMIN);
 
-    const cancelled = await world.saleCases.runAction(sale.id, 'cancel', ADMIN);
-    expect(cancelled.status).toBe('cancelled');
+    await expect(world.saleCases.runAction(sale.id, 'cancel', {}, ADMIN)).rejects.toThrow(
+      REASON_REQUIRED,
+    );
+    const cancelled = await world.saleCases.runAction(sale.id, 'cancel', REASON, ADMIN);
+    expect(cancelled).toMatchObject({ status: 'cancelled', cancelReason: 'Cliente desistió' });
     expect(world.ledger.summary().slice(-2)).toEqual([
       'sale_cancel p1 2 VTA-00001',
       'sale_cancel p2 5 VTA-00001',
@@ -671,7 +678,7 @@ describe('SalesUseCases', () => {
     expect(world.ledger.stock.get('p1|w1')).toBe(10);
     expect(world.quotes.rows.get(quote.id)).toMatchObject({ status: 'accepted', saleNumber: '' });
     expect(world.audit.actions()).toContain('ventas Anuló VTA-00001');
-    await expect(world.saleCases.runAction(sale.id, 'cancel', ADMIN)).rejects.toThrow(
+    await expect(world.saleCases.runAction(sale.id, 'cancel', REASON, ADMIN)).rejects.toThrow(
       'Solo se anulan ventas sin facturar; para una facturada, anula el comprobante primero.',
     );
   });
@@ -681,11 +688,13 @@ describe('SalesUseCases', () => {
     const sale = await newSale(world);
     world.sales.rows.set(sale.id, { ...sale, quoteId: 'gone' });
 
-    await expect(world.saleCases.runAction(sale.id, 'cancel', ADMIN)).resolves.toMatchObject({
+    await expect(
+      world.saleCases.runAction(sale.id, 'cancel', REASON, ADMIN),
+    ).resolves.toMatchObject({
       status: 'cancelled',
     });
-    await expectNotFound(world.saleCases.runAction(sale.id, 'fly', ADMIN), UNKNOWN_ACTION);
-    await expectNotFound(world.saleCases.runAction('missing', 'cancel', ADMIN));
+    await expectNotFound(world.saleCases.runAction(sale.id, 'fly', REASON, ADMIN), UNKNOWN_ACTION);
+    await expectNotFound(world.saleCases.runAction('missing', 'cancel', REASON, ADMIN));
   });
 });
 

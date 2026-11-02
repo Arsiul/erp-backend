@@ -164,7 +164,9 @@ describe('ReceiptsUseCases', () => {
     await world.receipts.runAction(receipt.id, 'cancel', BUYER);
 
     expect(await orderStatus()).toBe('approved');
-    await expect(world.orders.runAction(orderId, 'cancel', BUYER)).resolves.toMatchObject({
+    await expect(
+      world.orders.runAction(orderId, 'cancel', { reason: 'Proveedor sin stock' }, BUYER),
+    ).resolves.toMatchObject({
       status: 'cancelled',
     });
   });

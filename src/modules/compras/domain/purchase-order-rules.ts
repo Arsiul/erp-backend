@@ -100,6 +100,13 @@ export function assertOrderCancellable(order: PurchaseOrderRecord): void {
   }
 }
 
+/** Rejection is the approver's answer to a draft; an approved order is cancelled instead. */
+export function assertOrderRejectable(order: PurchaseOrderRecord): void {
+  if (order.status !== 'draft') {
+    throw new BusinessError('Solo se rechazan órdenes en borrador.');
+  }
+}
+
 /** Only approved or partially received orders accept receipts. */
 export function assertOrderReceivable(order: PurchaseOrderRecord): void {
   if (order.status !== 'approved' && order.status !== 'partial') {

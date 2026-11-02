@@ -225,6 +225,7 @@ export class MemoryOrders implements PurchaseOrderRepository {
       id: `po${String(this.ids)}`,
       number,
       status: 'draft',
+      cancelReason: '',
       lines: values.lines.map((line) => ({ ...line, receivedQuantity: 0 })),
     };
     this.rows.set(record.id, record);
@@ -239,8 +240,13 @@ export class MemoryOrders implements PurchaseOrderRepository {
     });
   }
 
-  setStatus(id: string, status: PurchaseOrderStatus): Promise<PurchaseOrderRecord> {
-    return this.save({ ...stored(this.rows, id), status });
+  setStatus(
+    id: string,
+    status: PurchaseOrderStatus,
+    cancelReason?: string,
+  ): Promise<PurchaseOrderRecord> {
+    const current = stored(this.rows, id);
+    return this.save({ ...current, status, cancelReason: cancelReason ?? current.cancelReason });
   }
 
   setProgress(
@@ -473,7 +479,7 @@ export class ComprasWorld {
       },
       BUYER,
     );
-    await this.orders.runAction(order.id, 'approve', BUYER);
+    await this.orders.runAction(order.id, 'approve', {}, BUYER);
     return order.id;
   }
 }

@@ -5,7 +5,11 @@ import {
   type ListOutput,
   toListCriteria,
 } from '../../../shared/application/listing/list-query';
-import { requireAction } from '../../../shared/application/listing/resource-actions';
+import {
+  type ActionInput,
+  requireAction,
+  requireReason,
+} from '../../../shared/application/listing/resource-actions';
 import { AUDIT_LOGGER, type AuditLogger } from '../../../shared/domain/ports/audit-logger.port';
 import { CLOCK, type Clock } from '../../../shared/domain/ports/clock.port';
 import {
@@ -196,12 +200,18 @@ export class SalesUseCases {
     });
   }
 
-  /** `cancel` gives the stock back and reopens the converted quote. */
-  runAction(id: string, actionId: string, actor: ActingUser): Promise<SaleRecord> {
+  /** `cancel` requires a reason, gives the stock back and reopens the converted quote. */
+  runAction(
+    id: string,
+    actionId: string,
+    input: ActionInput,
+    actor: ActingUser,
+  ): Promise<SaleRecord> {
     return this.uow.run(async () => {
       const current = found(await this.sales.find(id, true));
       const action = requireAction(RESOURCE, actionId);
       assertSaleCancellable(current);
+      const reason = requireReason(input);
       const today = todayOf(this.clock);
       for (const line of current.lines) {
         await this.stock.move({
@@ -216,7 +226,7 @@ export class SalesUseCases {
       if (current.quoteId !== '' && (await this.quotes.find(current.quoteId, true)) !== null) {
         await this.quotes.setStatus(current.quoteId, 'accepted', '');
       }
-      const updated = await this.sales.setStatus(id, 'cancelled');
+      const updated = await this.sales.setStatus(id, 'cancelled', reason);
       await recordAudit(this.audit, 'comercial', actor, RESOURCE, action.label, updated.number);
       return updated;
     });

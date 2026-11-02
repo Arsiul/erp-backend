@@ -49,7 +49,8 @@ export interface SaleRepository {
   find(id: string, forUpdate?: boolean): Promise<SaleRecord | null>;
   create(values: SaleValues): Promise<SaleRecord>;
   update(id: string, values: SaleEdit): Promise<SaleRecord>;
-  setStatus(id: string, status: SaleStatus): Promise<SaleRecord>;
+  /** `cancelReason` is left as is when omitted. */
+  setStatus(id: string, status: SaleStatus, cancelReason?: string): Promise<SaleRecord>;
   /** Links the current invoice (`invoiced`) or unlinks it (`pending_invoice`, `null`). */
   setInvoice(id: string, invoice: { id: string; number: string } | null): Promise<SaleRecord>;
 }

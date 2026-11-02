@@ -51,7 +51,11 @@ export const RESOURCE_CAPABILITIES: Readonly<Record<ResourceKey, ResourceCapabil
   comprobantes: { create: true, update: false, remove: false, actions: [CANCEL] },
   'notas-credito': { create: true, update: false, remove: false, actions: [] },
   'cuentas-cobrar': NOTHING,
-  'ordenes-compra': crud([{ id: 'approve', label: 'Aprobó' }, CANCEL]),
+  'ordenes-compra': crud([
+    { id: 'approve', label: 'Aprobó' },
+    { id: 'reject', label: 'Rechazó' },
+    CANCEL,
+  ]),
   recepciones: { create: true, update: true, remove: false, actions: [CANCEL] },
   'facturas-proveedor': { create: true, update: false, remove: false, actions: [CANCEL] },
   'cuentas-pagar': NOTHING,

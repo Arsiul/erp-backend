@@ -114,6 +114,7 @@ const sale = (patch: Partial<SaleRecord> = {}): SaleRecord => ({
   invoiceId: '',
   invoiceNumber: '',
   notes: '',
+  cancelReason: '',
   ...patch,
 });
 

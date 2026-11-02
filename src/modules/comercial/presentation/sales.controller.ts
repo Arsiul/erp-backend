@@ -16,6 +16,7 @@ import type { Response } from 'express';
 import type { AuthenticatedUser } from '../../../shared/domain/authorization/authenticated-user';
 import { OperationNotAllowedError } from '../../../shared/domain/errors/domain-error';
 import { CurrentUser, RequirePermission } from '../../../shared/presentation/auth/auth.decorators';
+import { ActionBodyDto } from '../../../shared/presentation/listing/action-body.dto';
 import { listBody } from '../../../shared/presentation/listing/list-response';
 import { type SaleInput, SalesUseCases } from '../application/sales.use-cases';
 import type { SaleRecord } from '../domain/commercial';
@@ -84,12 +85,13 @@ export class SalesController {
   @Post(':id/:action')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('ventas', 'write')
-  @ApiOperation({ summary: 'Acción sobre la venta (cancel)' })
+  @ApiOperation({ summary: 'Acción sobre la venta (cancel, con motivo)' })
   runAction(
     @Param('id') id: string,
     @Param('action') action: string,
+    @Body() body: ActionBodyDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<SaleRecord> {
-    return this.sales.runAction(id, action, user);
+    return this.sales.runAction(id, action, body, user);
   }
 }

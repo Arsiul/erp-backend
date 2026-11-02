@@ -1,7 +1,7 @@
 import type { Money } from '../../../shared/domain/money/money';
 import { type DocumentLine, type DocumentLineView, toLineView } from './purchase-lines';
 
-export type PurchaseOrderStatus = 'draft' | 'approved' | 'partial' | 'received' | 'cancelled';
+export type PurchaseOrderStatus = 'draft' | 'approved' | 'partial' | 'received' | 'cancelled' | 'rejected';
 
 export const PURCHASE_ORDER_STATUSES = [
   'draft',
@@ -9,6 +9,7 @@ export const PURCHASE_ORDER_STATUSES = [
   'partial',
   'received',
   'cancelled',
+  'rejected',
 ] as const satisfies readonly PurchaseOrderStatus[];
 
 /** An ordered line and how much of it the receipts in force already brought. */
@@ -40,6 +41,8 @@ export interface PurchaseOrderRecord extends Omit<PurchaseOrderValues, 'lines'> 
   readonly number: string;
   readonly lines: readonly PurchaseLine[];
   readonly status: PurchaseOrderStatus;
+  /** Why it was rejected or cancelled; `''` otherwise. */
+  readonly cancelReason: string;
 }
 
 export interface PurchaseOrderView {
@@ -57,6 +60,7 @@ export interface PurchaseOrderView {
   readonly total: number;
   readonly status: PurchaseOrderStatus;
   readonly notes: string;
+  readonly cancelReason: string;
 }
 
 export const toPurchaseOrderView = (order: PurchaseOrderRecord): PurchaseOrderView => ({
@@ -77,4 +81,5 @@ export const toPurchaseOrderView = (order: PurchaseOrderRecord): PurchaseOrderVi
   total: order.total.toNumber(),
   status: order.status,
   notes: order.notes,
+  cancelReason: order.cancelReason,
 });

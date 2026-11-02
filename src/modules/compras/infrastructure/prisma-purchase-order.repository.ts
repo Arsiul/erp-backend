@@ -30,6 +30,7 @@ const ORDER_FIELDS = {
   total: true,
   status: true,
   notes: true,
+  cancelReason: true,
   lines: {
     select: {
       productId: true,
@@ -60,6 +61,7 @@ const toRecord = (row: OrderRow): PurchaseOrderRecord => ({
   total: moneyOf(row.total),
   status: row.status,
   notes: row.notes,
+  cancelReason: row.cancelReason,
 });
 
 const header = (values: PurchaseOrderValues) => ({
@@ -146,10 +148,14 @@ export class PrismaPurchaseOrderRepository implements PurchaseOrderRepository {
     return toRecord(row);
   }
 
-  async setStatus(id: string, status: PurchaseOrderStatus): Promise<PurchaseOrderRecord> {
+  async setStatus(
+    id: string,
+    status: PurchaseOrderStatus,
+    cancelReason?: string,
+  ): Promise<PurchaseOrderRecord> {
     const row = await this.host.client.purchaseOrder.update({
       where: { id },
-      data: { status },
+      data: cancelReason === undefined ? { status } : { status, cancelReason },
       select: ORDER_FIELDS,
     });
     return toRecord(row);

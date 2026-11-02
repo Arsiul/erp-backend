@@ -33,7 +33,12 @@ export interface PurchaseOrderRepository {
   create(number: string, values: PurchaseOrderValues): Promise<PurchaseOrderRecord>;
   /** Replaces the header and the lines; nothing is received yet in a draft. */
   update(id: string, values: PurchaseOrderValues): Promise<PurchaseOrderRecord>;
-  setStatus(id: string, status: PurchaseOrderStatus): Promise<PurchaseOrderRecord>;
+  /** `cancelReason` is left as is when omitted. */
+  setStatus(
+    id: string,
+    status: PurchaseOrderStatus,
+    cancelReason?: string,
+  ): Promise<PurchaseOrderRecord>;
   /** Writes what each line received and the resulting status. */
   setProgress(
     id: string,

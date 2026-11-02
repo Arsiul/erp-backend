@@ -77,9 +77,11 @@ export interface SaleRecord extends DocumentTotals {
   readonly invoiceId: string;
   readonly invoiceNumber: string;
   readonly notes: string;
+  /** Why it was cancelled; `''` while in force. */
+  readonly cancelReason: string;
 }
 
-export type SaleValues = Omit<SaleRecord, 'id'>;
+export type SaleValues = Omit<SaleRecord, 'id' | 'cancelReason'>;
 export type SaleEdit = Pick<SaleRecord, 'seller' | 'paymentTerm' | 'notes'>;
 
 export interface InvoiceRecord extends DocumentTotals {
